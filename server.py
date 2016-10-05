@@ -33,11 +33,18 @@ class UDPServer(object):
             #print(udp)
 
     def validateCkSum(self, udp):
-        pass
+        stream = self.streams[udp.id]
+        xorKey = ByteHelper.bytesToUInt(udp.key + udp.key)
 
+        for cksum in udp.cksums:
+            pass
+        
     def validateSeq(self, udp):
         return self.streams[udp.id].seq == udp.seq
 
+    def updateStream(self, udp, cycle):
+        self.streams[udp.id].seq += udp.numcksum
+        self.streams[udp.id].cycle = cycle
 
 class UDPStruct(object):
 
@@ -48,7 +55,7 @@ class UDPStruct(object):
         self.seq = ByteHelper.bytesToUInt(data[4:8])
         self.key = ByteHelper.bytesToUInt(data[8:10])
         self.numcksum = ByteHelper.bytesToUInt(data[10:12])
-        self.cksum = [ByteHelper.bytesToUInt(cksum[x:x + 4]) for x in xrange(0, len(cksum), 4)]
+        self.cksums = [ByteHelper.bytesToUInt(cksum[x:x + 4]) for x in xrange(0, len(cksum), 4)]
         self.sig = data[-64:]
 
     def __repr__(self):
@@ -59,6 +66,7 @@ class UDPStream(object):
 
     def __init__(self, binary_path):
         self.seq = 0
+        self.cycle = None
 
         with open(binary_path) as f:
             self.data = f.read()
