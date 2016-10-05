@@ -1,64 +1,88 @@
 import socket
+import binascii
+from zlib import crc32
+import struct
+import json
+import argparse
 import pdb
 
 class UDPServer(object):
 
-    def __init__(self, port):
+    def __init__(self, configPath):
         self.bufsz = 1400
         self.ip = '127.0.0.1'
-        self.port = port
+        self.port = 1337
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.bind((self.ip, self.port))
+        #Stores binary data in dictionary...although takes up space in memory
+        #it allows for faster computation of the checksum
         self.streams = {}
+
+        with open(configPath, 'r') as f:
+            config = json.load(f)
+            for streamConfig in config:
+                with open(streamConfig['binary_path']) as fb:
+                    data = fb.read()
+                    self.streams[streamConfig['id']] = data
 
     def run(self):
         print "Serving is listening to port %d" % self.port
 
         while True:
-            data = bytearray(self.socket.recv(self.bufsz))
-            pdb.set_trace()
+            data = self.socket.recv(self.bufsz)
             udp = UDPStruct(data)
-            print(udp)
+            #pdb.set_trace()
+            #print(udp)
 
 
 class UDPStruct(object):
 
-    def __init__(self, udpBytes):
-        self.bytes = udpBytes
-        self.id = self.bytes[:4]
-        self.seq = self.bytes[4:8]
-        self.key = self.bytes[8:10]
-        self.numcksum = self.bytes[10:12]
-        self.cksum = zip(*(iter(self.bytes[12:-64]),) * 4)
-        self.sig = self.bytes[-64:]
+    def __init__(self, data):
+        cksum = data[12:-64]
+
+        self.id = data[:4]
+        self.seq = data[4:8]
+        self.key = data[8:10]
+        self.numcksum = data[10:12]
+        self.header = data[:12]
+        self.cksum = [cksum[x:x + 4] for x in xrange(0, len(cksum), 4)]
+        self.sig = data[-64:]
 
     def __repr__(self):
-        return '<id: %s, seq: %d, key: %s, numcksum: %d>' % (UDPStruct.formatByteArray(self.id), 
-                UDPStruct.bytesToUInt(self.seq), UDPStruct.formatByteArray(self.key), 
-                UDPStruct.bytesToUInt(self.numcksum))
+        return '<id: %s, seq: %d, key: %s, numcksum: %d>' % (binascii.hexlify(self.id), 
+                ByteHelper.bytesToUInt(self.seq), binascii.hexlify(self.key), 
+                ByteHelper.bytesToUInt(self.numcksum))
+
+class ByteHelper(object):
 
     @staticmethod
-    def formatByteArray(byteArray):
-        return ''.join('{:02x}'.format(x) for x in byteArray)
+    def bytesToUInt(byteStr):
+        if len(byteStr) == 2:
+            return struct.unpack('>H', byteStr)[0]
+        if len(byteStr) == 4:
+            return struct.unpack('>L', byteStr)[0]
+        raise ValueError('Byte string must have length of 2 or 4')
 
     @staticmethod
-    def bytesToUInt(byteArray):
-        assert(len(byteArray) <= 4)
-        numBytes = len(byteArray)
-        ret = 0
-        count = 0
-        for byte in byteArray:
-            ret |= byte << (8 * (numBytes - count - 1))
-            count += 1
+    def bytesToInt(byteStr):
+        if len(byteStr) == 2:
+            return struct.unpack('>h', byteStr)[0]
+        if len(byteStr) == 4:
+            return struct.unpack('>l', byteStr)[0]
+        raise ValueError('Byte string must have length of 2 or 4')
 
-        return ret
-
-class UDPStream(object):
-
-    def __init__():
-        self.seq = 0
-        self.prevCksum = None
+    @staticmethod
+    def getCRC32(data, cyclic=None):
+        if cyclic:
+            return crc32(data, cyclic) & 0xffffffff
+        else:
+            return crc32(data) & 0xffffffff
 
 if __name__ == '__main__':
-    server = UDPServer(1337)
+    parser = argparse.ArgumentParser(description='UDP checksum verification server')
+    parser.add_argument('-c', action='store', dest='config_path', required=True,
+            help='Store config file path')
+    result = parser.parse_args()
+
+    server = UDPServer(result.config_path)
     server.run()
