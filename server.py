@@ -43,7 +43,8 @@ class Validator(object):
         with open(configPath, 'r') as f:
             config = json.load(f)
             for streamConfig in config:
-                streams[streamConfig['id']] = UDPStream(streamConfig['binary_path'])
+                streams[streamConfig['id']] = UDPStream(streamConfig['binary_path'],
+                                                streamConfig['key_path'])
 
         print('Validator process is ready...')
         while True:
@@ -58,11 +59,12 @@ class UDPStruct(object):
     def __init__(self, data):
         cksum = data[12:-64]
 
-        self.id = str(ByteHelper.bytesToUInt(data[:4]))
-        self.seq = ByteHelper.bytesToUInt(data[4:8])
+        self.id = str(int.from_bytes(data[:4], 'big'))
+        self.seq = int.from_bytes(data[4:8], 'big')
         self.key = data[8:10]
-        self.numcksum = ByteHelper.bytesToUInt(data[10:12])
-        self.cksums = [ByteHelper.bytesToUInt(cksum[x:x + 4]) for x in range(0, len(cksum), 4)]
+        self.numcksum = int.from_bytes(data[10:12], 'big')
+        self.cksums = [int.from_bytes(cksum[x:x + 4], 'big') for x in range(0, len(cksum), 4)]
+        self.header = data[:-64]
         self.sig = data[-64:]
 
     def __repr__(self):
@@ -71,26 +73,36 @@ class UDPStruct(object):
 
 class UDPStream(object):
 
-    def __init__(self, binary_path):
+    def __init__(self, binary_path, key_path):
         self.seq = 0
         self.cycle = None
 
         with open(binary_path, 'rb') as f:
             self.data = f.read()
 
+        #with open(key_path, 'rb') as f:
+            #key_data = f.read()
+            #pKey_data = int.from_bytes(key_data[:-3], 'little')
+            #exp_data = int.from_bytes(key_data[-3:], 'little')
+
 class UDPHelper(object):
 
     @staticmethod
     def validateCkSum(udp, streams):
         stream = streams[udp.id]
-        xorKey = ByteHelper.bytesToUInt(udp.key + udp.key)
+        xorKey = int.from_bytes(udp.key + udp.key, 'big')
 
         for cksum in udp.cksums:
-            actual = ByteHelper.getCRC32(stream.data, stream.cycle)
+            actual = UDPHelper.getCRC32(stream.data, stream.cycle)
             stream.seq += 1
             stream.cycle = actual
+
             if actual ^ xorKey != cksum:
                 print('Invalid cksum') #process error here
+
+    @staticmethod
+    def validateSig(udp, streams):
+        pass
 
     @staticmethod
     def validateSeq(udp, streams):
@@ -98,16 +110,6 @@ class UDPHelper(object):
             print('Sequence out of order')
             return False
         return True
-
-class ByteHelper(object):
-
-    @staticmethod
-    def bytesToUInt(byteStr):
-        if len(byteStr) == 2:
-            return struct.unpack('>H', byteStr)[0]
-        if len(byteStr) == 4:
-            return struct.unpack('>L', byteStr)[0]
-        raise ValueError('Hex string must have length of 2 or 4')
 
     @staticmethod
     def getCRC32(data, cyclic=None):
