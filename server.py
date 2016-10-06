@@ -28,39 +28,42 @@ class UDPServer(object):
 
         while True:
             data = self.socket.recv(self.bufsz)
-            pdb.set_trace()
+            #pdb.set_trace()
             udp = UDPStruct(data)
-            #print(udp)
+            self.validateCkSum(udp)
+            self.validateSeq(udp)
 
     def validateCkSum(self, udp):
         stream = self.streams[udp.id]
         xorKey = ByteHelper.bytesToUInt(udp.key + udp.key)
 
         for cksum in udp.cksums:
-            pass
-        
-    def validateSeq(self, udp):
-        return self.streams[udp.id].seq == udp.seq
+            actual = ByteHelper.getCRC32(stream.data, stream.cycle)
+            if actual ^ xorKey != cksum:
+                print('Invalid cksum') #process error here
+            else:
+                stream.cycle = actual
+                stream.seq += 1
 
-    def updateStream(self, udp, cycle):
-        self.streams[udp.id].seq += udp.numcksum
-        self.streams[udp.id].cycle = cycle
+    def validateSeq(self, udp):
+        if self.streams[udp.id].seq != udp.seq: #process error here
+            print('Sequence out of order')
 
 class UDPStruct(object):
 
     def __init__(self, data):
         cksum = data[12:-64]
 
-        self.id = binascii.hexlify(data[:4])
+        self.id = str(ByteHelper.bytesToUInt(data[:4]))
         self.seq = ByteHelper.bytesToUInt(data[4:8])
-        self.key = ByteHelper.bytesToUInt(data[8:10])
+        self.key = data[8:10]
         self.numcksum = ByteHelper.bytesToUInt(data[10:12])
         self.cksums = [ByteHelper.bytesToUInt(cksum[x:x + 4]) for x in xrange(0, len(cksum), 4)]
         self.sig = data[-64:]
 
     def __repr__(self):
         return '<id: %s, seq: %d, key: %s, numcksum: %d>' % (self.id, 
-                self.seq, self.key, self.numcksum)
+                self.seq, binascii.hexlify(self.key), self.numcksum)
 
 class UDPStream(object):
 
