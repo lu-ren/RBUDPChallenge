@@ -4,6 +4,8 @@ from zlib import crc32
 import struct
 import json
 import argparse
+import threading
+from Queue import Queue
 import pdb
 
 class UDPServer(object):
@@ -17,6 +19,12 @@ class UDPServer(object):
         #Stores binary data in dictionary...although takes up space in memory
         #it allows for faster computation of the checksum
         self.streams = {}
+        self.queue = Queue(maxsize=0)
+        #Need producer/consumer model to avoid blocking
+        #main thread with checksum validation
+        self.t_validator = threading.Thread(target=self._udpConsumer)
+        self.t_validator.daemon = True
+        self.t_validator.start()
 
         with open(configPath, 'r') as f:
             config = json.load(f)
@@ -28,26 +36,35 @@ class UDPServer(object):
 
         while True:
             data = self.socket.recv(self.bufsz)
-            #pdb.set_trace()
             udp = UDPStruct(data)
-            self.validateCkSum(udp)
-            self.validateSeq(udp)
+            self.queue.put(udp)
 
-    def validateCkSum(self, udp):
+    def _udpConsumer(self):
+        while True:
+            udp = self.queue.get()
+            #print  udp.seq, ' ', udp.numcksum
+            #self._validateSeq(udp)
+            #self._validateCkSum(udp)
+
+    def _validateCkSum(self, udp):
         stream = self.streams[udp.id]
         xorKey = ByteHelper.bytesToUInt(udp.key + udp.key)
 
         for cksum in udp.cksums:
             actual = ByteHelper.getCRC32(stream.data, stream.cycle)
-            if actual ^ xorKey != cksum:
-                print('Invalid cksum') #process error here
-            else:
-                stream.cycle = actual
-                stream.seq += 1
+            stream.cycle = actual
+            stream.seq += 1
+            #if actual ^ xorKey != cksum:
+                #print('Invalid cksum') #process error here
+            #else:
+                #stream.cycle = actual
+                #stream.seq += 1
 
-    def validateSeq(self, udp):
+    def _validateSeq(self, udp):
         if self.streams[udp.id].seq != udp.seq: #process error here
             print('Sequence out of order')
+            return False
+        return True
 
 class UDPStruct(object):
 
