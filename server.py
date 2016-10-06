@@ -5,6 +5,8 @@ import struct
 import json
 import argparse
 import multiprocessing as mp
+from Crypto.PublicKey import RSA
+from Crypto.Hash import SHA256
 import pdb
 
 class UDPServer(object):
@@ -52,6 +54,7 @@ class Validator(object):
             print(udp.seq, ' ', udp.numcksum)
             UDPHelper.validateSeq(udp, streams)
             UDPHelper.validateCkSum(udp, streams)
+            UDPHelper.validateSig(udp, streams)
 
 
 class UDPStruct(object):
@@ -64,7 +67,7 @@ class UDPStruct(object):
         self.key = data[8:10]
         self.numcksum = int.from_bytes(data[10:12], 'big')
         self.cksums = [int.from_bytes(cksum[x:x + 4], 'big') for x in range(0, len(cksum), 4)]
-        self.header = data[:-64]
+        self.hash = SHA256.new(data[:-64]).digest()
         self.sig = data[-64:]
 
     def __repr__(self):
@@ -80,10 +83,11 @@ class UDPStream(object):
         with open(binary_path, 'rb') as f:
             self.data = f.read()
 
-        #with open(key_path, 'rb') as f:
-            #key_data = f.read()
-            #pKey_data = int.from_bytes(key_data[:-3], 'little')
-            #exp_data = int.from_bytes(key_data[-3:], 'little')
+        with open(key_path, 'rb') as f:
+            key_data = f.read()
+            pKey_data = int.from_bytes(key_data[:-3], 'little')
+            exp_data = int.from_bytes(key_data[-3:], 'little')
+            self.pKey = RSA.construct((pKey_data, exp_data))
 
 class UDPHelper(object):
 
@@ -102,7 +106,10 @@ class UDPHelper(object):
 
     @staticmethod
     def validateSig(udp, streams):
-        pass
+        stream = streams[udp.id]
+
+        if not stream.pKey.verify(udp.hash, udp.sig):
+            print('Verification failed')
 
     @staticmethod
     def validateSeq(udp, streams):
