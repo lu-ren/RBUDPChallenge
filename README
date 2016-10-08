@@ -1,1 +1,4 @@
 Red Balloon Security's challenge
+
+To run:
+python3 server.py -c config.json
