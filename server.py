@@ -144,13 +144,6 @@ class UDPHelper(object):
         return errorMsg
 
     @staticmethod
-    def bytes2int(bytestr):
-        if len(bytestr) == 2:
-            return struct.unpack('>H', bytestr)
-        if len(bytestr) == 4:
-            return struct.unpack('>L', bytestr)
-
-    @staticmethod
     def verifyRSA(pubKey, signature, message):
         sha256ans1 = b'\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20'
         e = pubKey[0]

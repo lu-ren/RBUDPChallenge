@@ -2,3 +2,27 @@ Red Balloon Security's challenge
 
 To run:
 python3 server.py -c config.json
+
+No dependencies required
+
+Design
+------
+The main process creates two other processes: validator and logger process.
+Validator process computes UDP checksum and logger process writes checksum errors
+to the log after an artificial 180 second delay. The main reason for using processes
+is to sidestep GIL in order to handle the fast rate of udp packets.
+
+Python 3 was used because of the convenient method to transform a byte string into 
+an int via the method int.from_bytes. Additionally, I found that multiprocessing seems
+to work better in Python 3 and Python 2 would hang after catching SIGTERM.
+
+Weaknesses
+---------
+Currently, I am unable to find a way to verify the signatures. I have tried many modules
+including PyCrypto, M2Crypt, and rsa. I have even tried to create my own homebrew verification.
+I am sure that there must be a small detail I am missing; 
+it might be the endianess or even the version of Python that I am using.
+Unfortunately, I have run out of time on this and need to work on my other assignments.
+However, my current design seems to scale pretty well
+and I am confident that I can incorporate signature verification into this system
+if I know how to do it correctly.
